@@ -31,7 +31,6 @@ namespace FormsMonete_Dadi
                 this.Close();
                 return;
             }
-                
 
             if (avviato)
             {
@@ -47,10 +46,14 @@ namespace FormsMonete_Dadi
 
         private void timer1_Tick(object sender, EventArgs e)
         {
-            if (!nextScriptato) 
+            if (nextScriptato)
+            {
+                label1.Text = sacchetto.LanciaRandom(scriptatoN);
+                nextScriptato = false;
+            }
+            else 
             {
                 label1.Text = sacchetto.LanciaRandom();
-                nextScriptato = false;
             }
             
             fineLancio();
@@ -58,8 +61,9 @@ namespace FormsMonete_Dadi
 
         private void fineLancio() 
         {
-            if (sacchetto.Count != currentItems) 
+            if (sacchetto.Count != currentItems || sacchetto.DoneLancio == true) 
             {
+                sacchetto.DoneLancio = false;
                 listBox1.Items.Clear();
                 Array.ForEach(sacchetto.GetElements(), daAggiungere => listBox1.Items.Add(daAggiungere));
             }

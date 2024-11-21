@@ -20,6 +20,11 @@ namespace GiocoMonete_Dadi
             count++;
         }
 
+        public CDado(int id) 
+        {
+            nome = "Dado" + id;
+        }
+
         public virtual int Lancia() 
         {
             Random random = new Random();
@@ -36,20 +41,26 @@ namespace GiocoMonete_Dadi
     {
         bool canLancioSpeciale;
 
-        public event EventHandler? OnSuperLancio;
+        public event EventHandler<DadoEventArgs> OnSuperLancio;
 
         public CDadoSpeciale() : base() 
         {
             nome = "DadoSpeciale" + nome.Substring(4);
+            canLancioSpeciale = false;
         }
         public override int Lancia()
         {
             Random random = new Random();
-            int esito = random.Next(step) + 1;
+            int esito = random.Next(6) + 1;
 
             if (canLancioSpeciale && esito == 6) 
-                OnSuperLancio?.Invoke(this, EventArgs.Empty);
-
+            {
+                DadoEventArgs args = new DadoEventArgs();
+                args.id = int.Parse(nome.Substring(12));
+                OnSuperLancio?.Invoke(this, args);
+            }
+                
+                
             return esito;
         }
 
@@ -65,17 +76,19 @@ namespace GiocoMonete_Dadi
         static int step = 2; // 0 - croce; 1 - testa
         static int count = 1;
 
-        int doppiaTestaCount;
+        int doppiaTestaCount,
+            triplaCroceCount;
 
         protected string nome;
         protected List<int> lanci;
 
-        public EventHandler? OnDoppiaTesta;
-        public EventHandler? OnTriplaCroce;
+        public EventHandler? OnShouldRemove;
+        public EventHandler? OnQuadruplaTriplaCroce;
 
         public CMonetaConMemoria() 
         {
             doppiaTestaCount = 0;
+            triplaCroceCount = 0;
             nome = "Moneta" + count;
             count++;
             lanci = new List<int>(3);
@@ -87,20 +100,30 @@ namespace GiocoMonete_Dadi
             if (lanci.Count > 2)
                 lanci.RemoveAt(0);
             lanci.Add(random.Next(step));
-            ControllaEventi();
-            return lanci.Last();
+            if (!ControllaEventi())
+                return 1; // croce
+            return 0; // testa
         }
 
-        protected void ControllaEventi() 
+        protected bool ControllaEventi() 
         {
             if (lanci.Where(lancio => lancio == 0).ToArray().Length == 2) 
             {
-                OnDoppiaTesta(this, EventArgs.Empty);
-                doppiaTestaCount++; // TO DO aggiungere la tripla doppia testa in sacchetto
+                doppiaTestaCount++;
+                lanci = new List<int>(3); // resetta la memoria
+                if (doppiaTestaCount == 3)
+                    OnShouldRemove?.Invoke(this, EventArgs.Empty);
+                return true;
+            }
+            else if (lanci.Where(lancio => lancio == 1).ToArray().Length == 3) 
+            {
+                triplaCroceCount++;
+                lanci = new List<int>(3); // resetta la memoria
+                if (triplaCroceCount == 4)
+                    OnQuadruplaTriplaCroce?.Invoke(this, EventArgs.Empty);
             }
                 
-            else if (lanci.Where(lancio => lancio == 1).ToArray().Length == 3)
-                OnTriplaCroce(this, EventArgs.Empty);
+            return false;
         }
 
         public void ResettaMemoria() 
@@ -135,8 +158,9 @@ namespace GiocoMonete_Dadi
             else
                 lanci.Add(random.Next(0));
 
-            ControllaEventi();
-            return lanci.Last();
+            if (!ControllaEventi())
+                return 1; // croce
+            return 0; // testa
         }
     }
 
@@ -149,10 +173,9 @@ namespace GiocoMonete_Dadi
         List<CMonetaConMemoria> monete;
 
         public event EventHandler<DadoEventArgs> OnMassimoDado;
-        
-        public event EventHandler? OnShouldRemove;
 
         public int Count { get; private set; }
+        public bool DoneLancio { get; set; }
 
         public CSacchetto() 
         {
@@ -162,9 +185,8 @@ namespace GiocoMonete_Dadi
             dadi = new List<CDado>(5);
             monete = new List<CMonetaConMemoria>(10);
 
-            
-
             Count = 15;
+            DoneLancio = false;
 
             for (int i = 0; i < 10; i++) 
             {
@@ -188,7 +210,7 @@ namespace GiocoMonete_Dadi
                     monete.Add(new CMonetaConMemoria());
 
 
-                monete.Last().OnDoppiaTesta += (sender, e) =>
+                monete.Last().OnShouldRemove += (sender, e) =>
                 {
                     // gestione dell'old index
                     if (monete.IndexOf(sender as CMonetaConMemoria) < oldMoneta)
@@ -199,10 +221,10 @@ namespace GiocoMonete_Dadi
                     monete.Remove(sender as CMonetaConMemoria);
                     Count--;
 
-                    if (monete.Count == 0)
+                    if (monete.Count == 0 && dadi.Where(dado => dado is CDadoSpeciale).ToArray().Length == 0) // se non ci sono dadi speciali finisce il gioco
                         canPlay = false;
                 };
-                monete.Last().OnTriplaCroce += (sender, e) => canPlay = false;
+                monete.Last().OnQuadruplaTriplaCroce += (sender, e) => canPlay = false;
             }
         }
 
@@ -257,9 +279,12 @@ namespace GiocoMonete_Dadi
             return r;
         }
 
-        private void SuperLancio(object? sender, EventArgs e) 
+        private void SuperLancio(object? sender, DadoEventArgs e) 
         {
-            sender = new CDado();
+            dadi[dadi.IndexOf(sender as CDado)] = new CDado(e.id);
+            DoneLancio = true;
+            if (monete.Count == 0)
+                canPlay = false; // super lancio senza monete
         }
 
         public bool ContinuaGioco() 
